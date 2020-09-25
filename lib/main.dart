@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hn_app/src/article.dart';
 import 'package:hn_app/src/favorites.dart';
 import 'package:hn_app/src/notifiers/hn_api.dart';
@@ -11,10 +14,20 @@ import 'package:hn_app/src/pages/settings.dart';
 import 'package:hn_app/src/widgets/headline.dart';
 import 'package:hn_app/src/widgets/loading_info.dart';
 import 'package:hn_app/src/widgets/search.dart';
+import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
+  // Set up logging to console. (In production, this might go to
+  // a rotating log, so that it can be sent to an analytics service
+  // when problems arise.)
+  Logger.root.level = Level.FINE; // Default is Level.INFO.
+  Logger.root.onRecord.listen((record) {
+    print('[${record.level.name}] ${record.loggerName} '
+        '-- ${record.time} -- ${record.message}');
+  });
+
   runApp(
     MultiProvider(
       providers: [
@@ -46,18 +59,21 @@ class MyApp extends StatelessWidget {
       title: 'Flutter Demo',
       darkTheme: ThemeData.dark(),
       theme: ThemeData(
-          brightness: Provider.of<PrefsNotifier>(context).userDarkMode
-              ? Brightness.dark
-              : Brightness.light,
-          canvasColor: Theme.of(context).brightness == Brightness.dark ||
-                  Provider.of<PrefsNotifier>(context).userDarkMode
-              ? Colors.black
-              : Colors.white,
-          primaryColor: primaryColor,
-          scaffoldBackgroundColor: primaryColor,
-          textTheme: Theme.of(context).textTheme.copyWith(
-              caption: TextStyle(color: Colors.white54),
-              subhead: TextStyle(fontFamily: 'Garamond', fontSize: 10.0))),
+        brightness: Provider.of<PrefsNotifier>(context).userDarkMode
+            ? Brightness.dark
+            : Brightness.light,
+        canvasColor: Theme.of(context).brightness == Brightness.dark ||
+                Provider.of<PrefsNotifier>(context).userDarkMode
+            ? Colors.black
+            : Colors.white,
+        primaryColor: primaryColor,
+        scaffoldBackgroundColor: primaryColor,
+        textTheme: TextTheme(
+          caption: TextStyle(color: Colors.white54),
+          button: GoogleFonts.boogaloo(fontSize: 18),
+          subtitle1: GoogleFonts.boogaloo(fontSize: 24),
+        ),
+      ),
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/':
@@ -120,21 +136,28 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _handlePageChange() {
-    setState(() {
-      _currentIndex = _pageController.page.round();
-    });
+    final newIndex = _pageController.page.round();
+
+    if (_currentIndex != newIndex) {
+      setState(() {
+        _currentIndex = newIndex;
+      });
+
+      final hn = Provider.of<HackerNewsNotifier>(context);
+      final tabs = hn.tabs;
+      final current = tabs[_currentIndex];
+
+      if (current.articles.isEmpty && !current.isLoading) {
+        // New tab with no data. Let's fetch some.
+        current.refresh();
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final hn = Provider.of<HackerNewsNotifier>(context);
     final tabs = hn.tabs;
-    final current = tabs[_currentIndex];
-
-    if (current.articles.isEmpty && !current.isLoading) {
-      // New tab with no data. Let's fetch some.
-      Future(() => current.refresh());
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -279,7 +302,7 @@ class _Item extends StatelessWidget {
                       icon: Icon(Icons.star_border),
                       onPressed: () => myDatabase.addFavorite(article));
                 }),
-            title: Text(article.title, style: TextStyle(fontSize: 24.0)),
+            title: Text(article.title),
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -288,15 +311,18 @@ class _Item extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: <Widget>[
-                        FlatButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (BuildContext context) =>
-                                  HackerNewsCommentPage(article.id),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 46),
+                          child: FlatButton(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (BuildContext context) =>
+                                    HackerNewsCommentPage(article.id),
+                              ),
                             ),
+                            child: Text('${article.descendants} comments'),
                           ),
-                          child: Text('${article.descendants} comments'),
                         ),
                         SizedBox(width: 16.0),
                         IconButton(
